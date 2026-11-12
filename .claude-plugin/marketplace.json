@@ -1,0 +1,5 @@
+{
+  "name": "local-usage-monitor",
+  "owner": { "name": "local" },
+  "plugins": [{ "name": "usage-monitor", "source": "./" }]
+}
