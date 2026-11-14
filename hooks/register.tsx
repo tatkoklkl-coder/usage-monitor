@@ -15,6 +15,12 @@ const snap = atom({ plugin: 'usage-monitor', key: 'snap' } as const, empty, {
   shape: 'snap-1',
 })
 
+// A once-a-second counter: bumping it redraws the pane so the reset countdowns tick.
+const tick = atom({ plugin: 'usage-monitor', key: 'tick' } as const, 0, {
+  shape: 'tick-1',
+})
+let stopTick: (() => void) | undefined
+
 const fmt = (n: number | undefined) => {
   if (n === undefined) return '–'
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M'
@@ -37,13 +43,44 @@ const resets = (iso?: string) => {
   if (!iso) return ''
   const ms = Date.parse(iso) - Date.now()
   if (!(ms > 0)) return ' (reset)'
-  const m = Math.round(ms / 60000)
-  const h = Math.floor(m / 60)
+  const t = Math.floor(ms / 1000)
+  const s = t % 60
+  const m = Math.floor(t / 60) % 60
+  const h = Math.floor(t / 3600)
   const d = Math.floor(h / 24)
-  return d >= 1 ? ` reset za ${d}d ${h % 24}h` : h >= 1 ? ` reset za ${h}h ${m % 60}m` : ` reset za ${m}m`
+  const p = (n: number) => String(n).padStart(2, '0')
+  const left = d >= 1 ? `${d}d ${h % 24}h ${p(m)}m` : `${h}:${p(m)}:${p(s)}`
+  return ` reset ${when(Date.parse(iso))} · za ${left}`
 }
 
-const DIR = 'C:/Users/PLEYNET/.claude/usage-monitor/sessions'
+const DAYS_PL = ['ND', 'PON', 'WT', 'ŚR', 'CZW', 'PT', 'SOB']
+const DAYS_EN: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+
+// "CZW 09:00" in Polish time (falls back to the machine's local time if Intl is missing).
+const when = (ms: number) => {
+  const p = (n: number) => String(n).padStart(2, '0')
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Europe/Warsaw',
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(new Date(ms))
+    const get = (t: string) => parts.find(x => x.type === t)?.value ?? ''
+    const day = DAYS_EN[get('weekday')]
+    if (day !== undefined) return `${DAYS_PL[day]} ${get('hour')}:${get('minute')}`
+  } catch {}
+  const dt = new Date(ms)
+  return `${DAYS_PL[dt.getDay()]} ${p(dt.getHours())}:${p(dt.getMinutes())}`
+}
+
+// Snapshots live in <home>/.claude/usage-monitor/sessions, so the floating window can read them.
+const dirOf = async ($: any): Promise<string> => {
+  let home = ''
+  try { home = (await $.env.get('USERPROFILE')) || (await $.env.get('HOME')) || '' } catch {}
+  return `${home.replace(/\\/g, '/')}/.claude/usage-monitor/sessions`
+}
 
 const publish = async ($: any) => {
   try {
@@ -60,7 +97,7 @@ const publish = async ($: any) => {
     }
     if (s.usd !== undefined) parts.push(`$${s.usd.toFixed(2)}`)
     if (parts.length) $.ui.status(parts.join(' · '))
-    await $.fs.write(`${DIR}/${id}.json`, JSON.stringify({ ...s, id, cwd, at: Date.now() }))
+    await $.fs.write(`${await dirOf($)}/${id}.json`, JSON.stringify({ ...s, id, cwd, at: Date.now() }))
   } catch {}
 }
 
@@ -71,6 +108,10 @@ export const register: Register = on => {
       description: 'Open the live usage / context / cache pane',
     })
     void $.ui.open({ id: PANE, title: 'Usage' })
+    stopTick?.()
+    stopTick = $.clock.every(1000, () => {
+      void update($, tick, n => n + 1)
+    })
     try {
       const u = await $.session.usage()
       await update($, snap, s => ({
@@ -132,6 +173,7 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
     const s = await read($, snap)
+    await read($, tick) // subscribe: redraw every second so countdowns tick
 
     const ctxPct = s.percent ?? (s.tokens && s.window ? (s.tokens / s.window) * 100 : undefined)
 

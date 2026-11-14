@@ -14,6 +14,6 @@ export type Snap = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'usage-monitor': { snap: Shaped<Snap> }
+    'usage-monitor': { snap: Shaped<Snap>; tick: Shaped<number> }
   }
 }
