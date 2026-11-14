@@ -56,23 +56,28 @@ const resets = (iso?: string) => {
 const DAYS_PL = ['ND', 'PON', 'WT', 'ŚR', 'CZW', 'PT', 'SOB']
 const DAYS_EN: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
 
-// "CZW 09:00" in Polish time (falls back to the machine's local time if Intl is missing).
+// "CZW 19.11 09:00" in Polish time, the date taken from the reset timestamp itself
+// (falls back to the machine's local time if Intl is missing).
 const when = (ms: number) => {
   const p = (n: number) => String(n).padStart(2, '0')
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: 'Europe/Warsaw',
       weekday: 'short',
+      day: '2-digit',
+      month: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
       hourCycle: 'h23',
     }).formatToParts(new Date(ms))
     const get = (t: string) => parts.find(x => x.type === t)?.value ?? ''
     const day = DAYS_EN[get('weekday')]
-    if (day !== undefined) return `${DAYS_PL[day]} ${get('hour')}:${get('minute')}`
+    if (day !== undefined) {
+      return `${DAYS_PL[day]} ${get('day')}.${get('month')} ${get('hour')}:${get('minute')}`
+    }
   } catch {}
   const dt = new Date(ms)
-  return `${DAYS_PL[dt.getDay()]} ${p(dt.getHours())}:${p(dt.getMinutes())}`
+  return `${DAYS_PL[dt.getDay()]} ${p(dt.getDate())}.${p(dt.getMonth() + 1)} ${p(dt.getHours())}:${p(dt.getMinutes())}`
 }
 
 // Snapshots live in <home>/.claude/usage-monitor/sessions, so the floating window can read them.
