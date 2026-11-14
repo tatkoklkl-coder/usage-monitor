@@ -12,7 +12,7 @@ const empty: Snap = {
 }
 
 const snap = atom({ plugin: 'usage-monitor', key: 'snap' } as const, empty, {
-  shape: 'snap-1',
+  shape: 'snap-2',
 })
 
 // A once-a-second counter: bumping it redraws the pane so the reset countdowns tick.
@@ -87,8 +87,34 @@ const dirOf = async ($: any): Promise<string> => {
   return `${home.replace(/\\/g, '/')}/.claude/usage-monitor/sessions`
 }
 
+// The engine's cost counter restarts with the process. cumUsd keeps a running total across
+// restarts: each change of the engine's figure adds the difference (or the whole figure, when
+// it dropped, i.e. after a restart). The previous total is read back from this chat's file.
+const trackCost = async ($: any) => {
+  try {
+    const s0 = await read($, snap)
+    const usd = s0.usd
+    if (usd === undefined) return
+    let base: { cum: number; last: number } | undefined
+    if (s0.cumUsd === undefined) {
+      try {
+        const id: string = await $.session.id()
+        const p = JSON.parse(await $.fs.read(`${await dirOf($)}/${id}.json`))
+        base = { cum: p.cumUsd ?? p.usd ?? 0, last: p.lastUsd ?? p.usd ?? 0 }
+      } catch {}
+    }
+    await update($, snap, s => {
+      const cum0 = s.cumUsd ?? base?.cum ?? 0
+      const last0 = s.cumUsd === undefined ? (base?.last ?? 0) : (s.lastUsd ?? 0)
+      const delta = usd >= last0 ? usd - last0 : usd
+      return { ...s, cumUsd: cum0 + delta, lastUsd: usd }
+    })
+  } catch {}
+}
+
 const publish = async ($: any) => {
   try {
+    await trackCost($)
     const id: string = await $.session.id()
     let cwd = ''
     try { cwd = await $.session.cwd() } catch {}
@@ -100,7 +126,8 @@ const publish = async ($: any) => {
       const all = s.last.cacheRead + s.last.cacheWrite + s.last.input
       if (all > 0) parts.push(`cache ${Math.round((s.last.cacheRead / all) * 100)}%`)
     }
-    if (s.usd !== undefined) parts.push(`$${s.usd.toFixed(2)}`)
+    const total = s.cumUsd ?? s.usd
+    if (total !== undefined) parts.push(`$${total.toFixed(2)}`)
     if (parts.length) $.ui.status(parts.join(' · '))
     await $.fs.write(`${await dirOf($)}/${id}.json`, JSON.stringify({ ...s, id, cwd, at: Date.now() }))
   } catch {}
@@ -242,8 +269,9 @@ export const register: Register = on => {
           <Box flexDirection="column">
             <Text> </Text>
             <Text>
-              Koszt sesji: <Text bold>${s.usd.toFixed(2)}</Text>
+              Koszt łącznie: <Text bold>${(s.cumUsd ?? s.usd).toFixed(2)}</Text>
             </Text>
+            <Text dimColor>od ostatniego restartu: ${s.usd.toFixed(2)}</Text>
           </Box>
         )}
         {s.last && <Text dimColor>{s.last.model}</Text>}

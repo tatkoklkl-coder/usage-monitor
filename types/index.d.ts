@@ -6,6 +6,9 @@ export type Snap = {
   percent?: number
   limits: Limit[]
   usd?: number
+  // running total across restarts, and the engine's last reading it was built from
+  cumUsd?: number
+  lastUsd?: number
   // last main-loop turn
   last?: { input: number; cacheRead: number; cacheWrite: number; output: number; model: string }
   // session totals
