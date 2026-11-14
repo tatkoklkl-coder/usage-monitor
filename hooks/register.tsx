@@ -87,6 +87,30 @@ const dirOf = async ($: any): Promise<string> => {
   return `${home.replace(/\\/g, '/')}/.claude/usage-monitor/sessions`
 }
 
+// Rate limits belong to the whole account, so every chat shares one file: whichever chat last
+// heard a fresh reading from the API writes it, and every other chat adopts it when it is newer
+// than its own (on entering the chat and every few seconds after).
+const limitsFile = async ($: any): Promise<string> =>
+  (await dirOf($)).replace(/\/sessions$/, '/limits.json')
+
+const publishLimits = async ($: any) => {
+  try {
+    const s = await read($, snap)
+    if (s.limits.length === 0 || !s.limitsAt) return
+    await $.fs.write(await limitsFile($), JSON.stringify({ limits: s.limits, at: s.limitsAt }))
+  } catch {}
+}
+
+const pullLimits = async ($: any) => {
+  try {
+    const p = JSON.parse(await $.fs.read(await limitsFile($)))
+    const s = await read($, snap)
+    if (Array.isArray(p.limits) && p.limits.length > 0 && p.at > (s.limitsAt ?? 0)) {
+      await update($, snap, x => ({ ...x, limits: p.limits, limitsAt: p.at }))
+    }
+  } catch {}
+}
+
 // The engine's cost counter restarts with the process. cumUsd keeps a running total across
 // restarts: each change of the engine's figure adds the difference (or the whole figure, when
 // it dropped, i.e. after a restart). The previous total is read back from this chat's file.
@@ -145,9 +169,12 @@ export const register: Register = on => {
     })
     void $.ui.open({ id: PANE, title: 'Usage' })
     stopTick?.()
+    let beats = 0
     stopTick = $.clock.every(1000, () => {
       void update($, tick, n => n + 1)
+      if (++beats % 3 === 0) void pullLimits($)
     })
+    await pullLimits($)
     try {
       const u = await $.session.usage()
       await update($, snap, s => ({
@@ -169,9 +196,11 @@ export const register: Register = on => {
       tokens: e.context.tokens,
       window: e.context.window,
       percent: e.context.percent,
-      limits: e.rateLimits.map(r => ({ ...r })),
+      limits: e.rateLimits.length > 0 ? e.rateLimits.map(r => ({ ...r })) : s.limits,
+      limitsAt: e.rateLimits.length > 0 ? Date.now() : s.limitsAt,
       usd: e.cost?.usd,
     }))
+    await publishLimits($)
     await publish($)
     return next(e)
   })

@@ -5,6 +5,8 @@ export type Snap = {
   window: number
   percent?: number
   limits: Limit[]
+  // when `limits` was last read (ms), here or adopted from another chat via limits.json
+  limitsAt?: number
   usd?: number
   // running total across restarts, and the engine's last reading it was built from
   cumUsd?: number
