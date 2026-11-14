@@ -90,6 +90,8 @@ const dirOf = async ($: any): Promise<string> => {
 // The engine's cost counter restarts with the process. cumUsd keeps a running total across
 // restarts: each change of the engine's figure adds the difference (or the whole figure, when
 // it dropped, i.e. after a restart). The previous total is read back from this chat's file.
+let runBase: number | undefined
+
 const trackCost = async ($: any) => {
   try {
     const s0 = await read($, snap)
@@ -107,7 +109,9 @@ const trackCost = async ($: any) => {
       const cum0 = s.cumUsd ?? base?.cum ?? 0
       const last0 = s.cumUsd === undefined ? (base?.last ?? 0) : (s.lastUsd ?? 0)
       const delta = usd >= last0 ? usd - last0 : usd
-      return { ...s, cumUsd: cum0 + delta, lastUsd: usd }
+      // "since now": the engine's figure minus what it read when this module started
+      if (runBase === undefined || usd < runBase) runBase = usd < (runBase ?? 0) ? 0 : usd
+      return { ...s, cumUsd: cum0 + delta, lastUsd: usd, sinceUsd: Math.max(0, usd - runBase) }
     })
   } catch {}
 }
@@ -271,7 +275,7 @@ export const register: Register = on => {
             <Text>
               Koszt łącznie: <Text bold>${(s.cumUsd ?? s.usd).toFixed(2)}</Text>
             </Text>
-            <Text dimColor>od ostatniego restartu: ${s.usd.toFixed(2)}</Text>
+            <Text dimColor>od teraz (to uruchomienie): ${(s.sinceUsd ?? 0).toFixed(2)}</Text>
           </Box>
         )}
         {s.last && <Text dimColor>{s.last.model}</Text>}

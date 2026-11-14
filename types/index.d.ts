@@ -9,6 +9,8 @@ export type Snap = {
   // running total across restarts, and the engine's last reading it was built from
   cumUsd?: number
   lastUsd?: number
+  // cost since this module loaded (starts at 0)
+  sinceUsd?: number
   // last main-loop turn
   last?: { input: number; cacheRead: number; cacheWrite: number; output: number; model: string }
   // session totals

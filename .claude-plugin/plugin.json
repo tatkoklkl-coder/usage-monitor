@@ -1,6 +1,6 @@
 {
   "name": "usage-monitor",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Live pane: rate-limit usage, context window fill, prompt-cache hit rate and cost.",
   "types": "./types/index.d.ts"
 }
