@@ -13,6 +13,15 @@ export type Snap = {
   lastUsd?: number
   // cost since this module loaded (starts at 0)
   sinceUsd?: number
+  // prompt-cache countdown: when the last main-loop turn touched the cache (ms), the TTL in use
+  // (ms; assumed 1 h until a gap longer than 5 min shows otherwise) and whether it was observed
+  cacheAt?: number
+  ttlMs?: number
+  ttlSure?: boolean
+  // where the TTL came from: the API's per-write split, read from the chat's transcript file
+  ttlSrc?: 'api'
+  // why the transcript could not be read, when it could not
+  ttlErr?: string
   // last main-loop turn
   last?: { input: number; cacheRead: number; cacheWrite: number; output: number; model: string }
   // session totals
